@@ -55,13 +55,12 @@ func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 1. 发送图片/视频，会自动弹出标签选择按钮
 2. 发送文字消息，也会弹出标签选择按钮
 3. 发送 /tags 查看所有可用标签
-4. 发送 /label <标签名> 设置默认标签
-5. 发送 /refresh 刷新标签列表
-6. 发送 /edit 查看最近的动态列表
-7. 发送 /edit <编号> 编辑指定动态
-8. 发送 /delete 查看最近的动态列表
-9. 发送 /delete <编号> 删除指定动态
-10. 发送 /cancel 取消编辑
+4. 发送 /refresh 刷新标签列表
+5. 发送 /edit 查看最近的动态列表
+6. 发送 /edit <编号> 编辑指定动态
+7. 发送 /delete 查看最近的动态列表
+8. 发送 /delete <编号> 删除指定动态
+9. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
@@ -89,27 +88,12 @@ func HandleTagsCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		config.SetLabels(labels)
 	}
 	
-	// 构建内联键盘
-	var buttons [][]tgbotapi.InlineKeyboardButton
-	for i := 0; i < len(labels); i += 3 {
-		var row []tgbotapi.InlineKeyboardButton
-		for j := 0; j < 3 && i+j < len(labels); j++ {
-			label := labels[i+j]
-			row = append(row, tgbotapi.NewInlineKeyboardButtonData(label, "setdefault:"+label))
-		}
-		buttons = append(buttons, row)
+	message := "📋 可用标签：\n"
+	for i, label := range labels {
+		message += fmt.Sprintf("%d. %s\n", i+1, label)
 	}
-	// 刷新按钮
-	refreshRow := []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData("🔄 刷新", "label:refresh"),
-	}
-	buttons = append(buttons, refreshRow)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
-
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "📋 请选择一个标签作为默认标签：")
-	msg.ReplyMarkup = keyboard
-	_, err = bot.Send(msg)
-	return err
+	
+	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
 // HandleRefreshCommand 处理 /refresh 命令
@@ -138,64 +122,6 @@ func HandleRefreshCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	}
 	
 	return safeSendMessage(bot, update.Message.Chat.ID, message)
-}
-
-// HandleLabelCommand 处理 /label 命令
-func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
-	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
-		return nil
-	}
-	
-	text := update.Message.Text
-	if text == "" {
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
-	}
-	
-	parts := strings.Fields(text)
-	if len(parts) < 2 {
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/label <标签名>")
-	}
-	
-	label := strings.Join(parts[1:], " ")
-	
-	// 先尝试从 GitHub 获取最新标签进行验证
-	labels, err := github.GetGitHubLabels()
-	if err != nil {
-		log.Printf("获取 GitHub 标签失败: %v，使用缓存标签", err)
-		// 获取失败时使用缓存标签
-		labels = config.GetLabels()
-	} else {
-		// 获取成功，更新缓存
-		config.SetLabels(labels)
-	}
-	
-	// 检查标签是否有效
-	valid := false
-	for _, availableLabel := range labels {
-		if availableLabel == label {
-			valid = true
-			break
-		}
-	}
-	
-	if !valid {
-		message := "❌ 无效的标签\n\n可用标签：\n"
-		for _, l := range labels {
-			message += fmt.Sprintf("• %s\n", l)
-		}
-		message += "\n💡 发送 /refresh 刷新标签列表"
-		return safeSendMessage(bot, update.Message.Chat.ID, message)
-	}
-	
-	// 存储用户默认标签
-	config.MediaMutex.Lock()
-	if config.UserDefaultLabels == nil {
-		config.UserDefaultLabels = make(map[int64]string)
-	}
-	config.UserDefaultLabels[update.Message.Chat.ID] = label
-	config.MediaMutex.Unlock()
-	
-	return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("✅ 默认标签已设置为：%s", label))
 }
 
 // createLabelKeyboard 创建标签选择键盘
@@ -242,20 +168,6 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	
 	callback := update.CallbackQuery
 	data := callback.Data
-	
-	if strings.HasPrefix(data, "setdefault:") {
-		label := strings.TrimPrefix(data, "setdefault:")
-		// 设置为默认标签
-		config.MediaMutex.Lock()
-		if config.UserDefaultLabels == nil {
-			config.UserDefaultLabels = make(map[int64]string)
-		}
-		config.UserDefaultLabels[callback.From.ID] = label
-		config.MediaMutex.Unlock()
-		msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, fmt.Sprintf("✅ 默认标签已设置为：%s", label))
-		bot.Send(msg)
-		return safeSendMessage(bot, callback.From.ID, fmt.Sprintf("📝 你的默认标签已设置为：%s\n下次发动态会自动带上该标签。", label))
-	}
 	
 	if strings.HasPrefix(data, "label:") {
 		label := strings.TrimPrefix(data, "label:")
@@ -420,13 +332,12 @@ func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 1. 发送图片/视频，会自动弹出标签选择按钮
 2. 发送文字消息，也会弹出标签选择按钮
 3. 发送 /tags 查看所有可用标签
-4. 发送 /label <标签名> 设置默认标签
-5. 发送 /refresh 刷新标签列表
-6. 发送 /edit 查看最近的动态列表
-7. 发送 /edit <编号> 编辑指定动态
-8. 发送 /delete 查看最近的动态列表
-9. 发送 /delete <编号> 删除指定动态
-10. 发送 /cancel 取消编辑
+4. 发送 /refresh 刷新标签列表
+5. 发送 /edit 查看最近的动态列表
+6. 发送 /edit <编号> 编辑指定动态
+7. 发送 /delete 查看最近的动态列表
+8. 发送 /delete <编号> 删除指定动态
+9. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
@@ -448,22 +359,12 @@ func HandlePhotoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	}
 	photo := photos[len(photos)-1]
 	
-	// 获取用户默认标签
-	config.MediaMutex.RLock()
-	defaultLabel := config.UserDefaultLabels[update.Message.Chat.ID]
-	config.MediaMutex.RUnlock()
-	
-	var labels []string
-	if defaultLabel != "" {
-		labels = []string{defaultLabel}
-	}
-	
 	config.MediaMutex.Lock()
 	config.PendingMedia[update.Message.Chat.ID] = &types.PendingMedia{
 		FileID:  photo.FileID,
 		Type:    "photo",
 		Caption: update.Message.Caption,
-		Labels:  labels,
+		Labels:  []string{},
 	}
 	config.MediaMutex.Unlock()
 
@@ -482,9 +383,6 @@ func HandlePhotoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	message := "📷 图片已接收！"
 	if update.Message.Caption != "" {
 		message += fmt.Sprintf("\n\n当前文字：%s", update.Message.Caption)
-	}
-	if len(labels) > 0 {
-		message += fmt.Sprintf("\n\n🏷️ 默认标签：%s", labels[0])
 	}
 	message += "\n\n💡 请选择标签，然后可以发送文字来更新动态内容！"
 	
@@ -507,22 +405,12 @@ func HandleVideoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 视频文件过大，请上传小于 50MB 的视频")
 	}
 	
-	// 获取用户默认标签
-	config.MediaMutex.RLock()
-	defaultLabel := config.UserDefaultLabels[update.Message.Chat.ID]
-	config.MediaMutex.RUnlock()
-	
-	var labels []string
-	if defaultLabel != "" {
-		labels = []string{defaultLabel}
-	}
-	
 	config.MediaMutex.Lock()
 	config.PendingMedia[update.Message.Chat.ID] = &types.PendingMedia{
 		FileID:  video.FileID,
 		Type:    "video",
 		Caption: update.Message.Caption,
-		Labels:  labels,
+		Labels:  []string{},
 	}
 	config.MediaMutex.Unlock()
 	telegram.ScheduleMediaPublish(bot, update.Message.Chat.ID, func() {
@@ -539,9 +427,6 @@ func HandleVideoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	message := "🎥 视频已接收！"
 	if update.Message.Caption != "" {
 		message += fmt.Sprintf("\n\n当前文字：%s", update.Message.Caption)
-	}
-	if len(labels) > 0 {
-		message += fmt.Sprintf("\n\n🏷️ 默认标签：%s", labels[0])
 	}
 	message += "\n\n💡 请选择标签，然后可以发送文字来更新动态内容！"
 	
@@ -569,8 +454,6 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 			return HandleStartCommand(bot, update)
 		} else if strings.HasPrefix(text, "/tags") {
 			return HandleTagsCommand(bot, update)
-		} else if strings.HasPrefix(text, "/label") {
-			return HandleLabelCommand(bot, update)
 		} else if strings.HasPrefix(text, "/refresh") {
 			return HandleRefreshCommand(bot, update)
 		} else if strings.HasPrefix(text, "/edit") {

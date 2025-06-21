@@ -22,7 +22,6 @@ const (
 var (
 	Cfg             types.Config
 	PendingMedia    = make(map[int64]*types.PendingMedia)
-	UserDefaultLabels = make(map[int64]string) // 用户默认标签
 	MediaMutex      sync.RWMutex
 	
 	// 标签缓存
