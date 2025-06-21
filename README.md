@@ -1,212 +1,168 @@
 # Moments-Go
 
-一个用 Golang 实现的 Telegram 机器人，用于自动发布动态到 GitHub Issues。
+一个基于 Go 语言的 Telegram 机器人，用于将消息、图片和视频发布到 GitHub Issues。
 
 ## 功能特性
 
-- 📱 支持发送图片和视频，自动发布到 GitHub Issues
-- 💬 支持纯文字动态发布
-- 🔐 用户权限验证，只允许授权用户使用
-- 📤 自动上传媒体文件到 GitHub 仓库
-- ⏰ 支持延迟发布功能
-- 🏷️ 自动添加标签分类
-- 🐳 Docker 支持
-- 🔄 GitHub Actions 自动构建
+- 📝 发送文字消息，弹出标签选择按钮
+- 📷 发送图片，自动弹出标签选择按钮
+- 🎥 发送视频，自动弹出标签选择按钮
+- 🏷️ 动态标签管理，从 GitHub 仓库获取
+- ⏰ 媒体文件延迟发布（5分钟）
+- 🔄 标签缓存和刷新机制
+- 🚀 Docker 部署支持
 
-## 环境要求
+## 快速开始
 
-- Go 1.21 或更高版本
+### 1. 环境要求
+
+- Go 1.19+
 - Docker (可选)
 - Telegram Bot Token
 - GitHub Personal Access Token
 
-## 快速开始
+### 2. 配置
 
-### 方法一：Docker 部署（推荐）
-
-```bash
-# 拉取最新镜像
-docker pull your-username/moments-go:latest
-
-# 运行容器
-docker run -d \
-  --name moments-go-bot \
-  --restart unless-stopped \
-  -e TELEGRAM_BOT_TOKEN="your_token" \
-  -e TELEGRAM_USER_ID="your_user_id" \
-  -e GITHUB_SECRET="your_secret" \
-  your-username/moments-go:latest
-```
-
-### 方法二：Docker Compose
+复制环境变量文件并填写配置：
 
 ```bash
-# 创建 .env 文件
 cp env.example .env
-# 编辑 .env 文件，填入你的配置
-
-# 启动服务
-docker-compose up -d
 ```
 
-### 方法三：本地运行
-
-```bash
-# 克隆项目
-git clone <repository-url>
-cd moments-go
-
-# 安装依赖
-go mod tidy
-
-# 配置环境变量
-cp env.example .env
-# 编辑 .env 文件
-
-# 运行
-go run ./cmd
-```
-
-## 安装和配置
-
-### 1. 获取配置信息
-
-#### Telegram Bot Token
-1. 在 Telegram 中找到 @BotFather
-2. 发送 `/newbot` 创建新机器人
-3. 获取 Bot Token
-
-#### Telegram User ID
-1. 在 Telegram 中找到 @userinfobot
-2. 发送任意消息获取你的 User ID
-
-#### GitHub Personal Access Token
-1. 访问 GitHub Settings > Developer settings > Personal access tokens
-2. 生成新的 token，需要以下权限：
-   - `repo` - 完整的仓库访问权限
-   - `issues` - Issues 访问权限
-
-### 2. 环境变量配置
+编辑 `.env` 文件：
 
 ```env
-# Telegram 机器人配置
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-TELEGRAM_USER_ID=your_telegram_user_id_here
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+GITHUB_TOKEN=your_github_token
+GITHUB_REPO=your_username/your_repo
+AUTHORIZED_USERS=123456789,987654321
+WAIT_TIME=300
+```
 
-# GitHub 配置
-GITHUB_SECRET=your_github_personal_access_token_here
-GITHUB_FILE_REPO=moments-files
+### 3. 运行
+
+#### 本地运行
+
+```bash
+go run cmd/main.go
+```
+
+#### Docker 运行
+
+```bash
+docker-compose up -d
 ```
 
 ## 使用方法
 
-### 机器人命令
+1. **发送文字消息** - 弹出标签选择按钮，选择后立即发布
+2. **发送图片/视频** - 弹出标签选择按钮，选择后可继续发送文字更新内容
+3. **命令列表**：
+   - `/start` - 显示帮助信息
+   - `/say <内容>` - 直接发布文字动态
+   - `/tags` - 查看所有可用标签
+   - `/label <标签名>` - 设置默认标签
+   - `/refresh` - 刷新标签列表
 
-- `/start` - 显示帮助信息
-- `/say <内容>` - 发布纯文字动态
+## 网络问题排查
 
-### 使用示例
+如果遇到 `tls: bad record MAC` 或其他网络连接错误，请按以下步骤排查：
 
-1. **发送图片**：直接发送图片，机器人会自动发布动态
-2. **发送视频**：直接发送视频，机器人会自动发布动态
-3. **发送文字**：直接发送文字，机器人会发布纯文字动态
-4. **组合使用**：先发送媒体文件，再发送文字来更新动态内容
-
-## 项目结构
-
-```
-moments-go/
-├── cmd/
-│   └── main.go          # 程序入口
-├── config/
-│   └── config.go        # 配置管理
-├── github/
-│   └── github.go        # GitHub API 相关
-├── telegram/
-│   └── telegram.go      # Telegram API 相关
-├── handlers/
-│   └── handlers.go      # 消息处理器
-├── types/
-│   └── types.go         # 类型定义
-├── scripts/
-│   └── deploy.sh        # 部署脚本
-├── .github/workflows/   # GitHub Actions
-├── Dockerfile           # Docker 构建文件
-├── docker-compose.yml   # Docker Compose 配置
-└── README.md            # 项目说明
-```
-
-## Docker 部署
-
-### 构建镜像
+### 1. 运行网络诊断
 
 ```bash
+./scripts/test_connection.sh
+```
+
+### 2. 常见解决方案
+
+#### 网络连接问题
+- 检查网络连接是否稳定
+- 尝试重启网络连接
+- 检查防火墙设置
+
+#### 代理设置
+如果使用代理，请设置环境变量：
+
+```bash
+export HTTP_PROXY=http://proxy:port
+export HTTPS_PROXY=http://proxy:port
+```
+
+#### DNS 问题
+尝试使用公共 DNS：
+
+```bash
+# 临时设置 DNS
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+```
+
+#### 系统时间问题
+确保系统时间正确：
+
+```bash
+sudo ntpdate -s time.nist.gov
+```
+
+## 部署
+
+### Docker 部署
+
+```bash
+# 构建镜像
 docker build -t moments-go .
+
+# 运行容器
+docker run -d --name moments-go --env-file .env moments-go
 ```
 
-### 使用 Docker Compose
+### Docker Compose
 
 ```bash
-# 开发环境
 docker-compose up -d
-
-# 生产环境
-docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### 自动部署脚本
+### 生产环境部署
+
+使用提供的部署脚本：
 
 ```bash
-# 设置环境变量
-export TELEGRAM_BOT_TOKEN="your_token"
-export TELEGRAM_USER_ID="your_user_id"
-export GITHUB_SECRET="your_secret"
-
-# 运行部署脚本
 ./scripts/deploy.sh
 ```
 
-## GitHub Actions
+## 开发
 
-项目配置了以下 GitHub Actions 工作流：
+### 项目结构
 
-- **Test**: 在 PR 和 push 时运行测试
-- **Build and Push**: 自动构建并推送到 Docker Hub
-- **Release**: 创建 tag 时自动发布
-
-### 设置 GitHub Secrets
-
-在 GitHub 仓库设置中添加以下 secrets：
-
-- `DOCKERHUB_USERNAME`: Docker Hub 用户名
-- `DOCKERHUB_TOKEN`: Docker Hub Access Token
-
-### 发布新版本
-
-```bash
-# 创建并推送 tag
-git tag v1.0.0
-git push origin v1.0.0
+```
+Moments-Go/
+├── cmd/           # 主程序入口
+├── config/        # 配置管理
+├── github/        # GitHub API 集成
+├── handlers/      # 消息处理器
+├── telegram/      # Telegram API 集成
+├── types/         # 数据类型定义
+├── scripts/       # 部署和工具脚本
+└── docker-compose.yml
 ```
 
-## 技术栈
+### 构建
 
-- **语言**：Golang 1.21+
-- **Telegram API**：go-telegram-bot-api/v5
-- **配置管理**：godotenv
-- **HTTP 客户端**：标准库 net/http
-- **JSON 处理**：标准库 encoding/json
-- **容器化**：Docker
-- **CI/CD**：GitHub Actions
+```bash
+go build -o moments-go cmd/main.go
+```
 
-## 注意事项
+### 测试
 
-1. 确保 GitHub 仓库存在且有写入权限
-2. 视频文件大小限制为 50MB
-3. 动态内容长度限制为 5000 字符
-4. 只有授权的用户 ID 才能使用机器人
-5. 生产环境建议使用 Docker 部署
+```bash
+go test ./...
+```
 
 ## 许可证
 
-MIT License 
+MIT License
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！ 
