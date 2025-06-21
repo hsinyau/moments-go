@@ -54,15 +54,14 @@ func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 使用方法：
 1. 发送图片/视频，会自动弹出标签选择按钮
 2. 发送文字消息，也会弹出标签选择按钮
-3. 直接发送 /say <内容> 发布纯文字动态
-4. 发送 /tags 查看所有可用标签
-5. 发送 /label <标签名> 设置默认标签
-6. 发送 /refresh 刷新标签列表
-7. 发送 /edit 查看最近的动态列表
-8. 发送 /edit <编号> 编辑指定动态
-9. 发送 /delete 查看最近的动态列表
-10. 发送 /delete <编号> 删除指定动态
-11. 发送 /cancel 取消编辑
+3. 发送 /tags 查看所有可用标签
+4. 发送 /label <标签名> 设置默认标签
+5. 发送 /refresh 刷新标签列表
+6. 发送 /edit 查看最近的动态列表
+7. 发送 /edit <编号> 编辑指定动态
+8. 发送 /delete 查看最近的动态列表
+9. 发送 /delete <编号> 删除指定动态
+10. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
@@ -385,51 +384,6 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	return nil
 }
 
-// HandleSayCommand 处理 /say 命令
-func HandleSayCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
-	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
-		return nil
-	}
-	text := update.Message.Text
-	if text == "" {
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
-	}
-	parts := strings.Fields(text)
-	if len(parts) < 2 {
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/say <内容>")
-	}
-	content := strings.Join(parts[1:], " ")
-	if content == "" {
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 内容不能为空")
-	}
-	
-	// 清理内容，确保UTF-8编码
-	content = cleanUTF8String(content)
-	
-	if err := safeSendMessage(bot, update.Message.Chat.ID, "⏳ 正在发布动态..."); err != nil {
-		return err
-	}
-	
-	// 获取用户默认标签
-	config.MediaMutex.RLock()
-	defaultLabel := config.UserDefaultLabels[update.Message.Chat.ID]
-	config.MediaMutex.RUnlock()
-	
-	var labels []string
-	if defaultLabel != "" {
-		labels = []string{defaultLabel}
-	} else {
-		labels = []string{"动态"}
-	}
-	
-	_, err := github.CreateGitHubIssueWithLabels(content, labels)
-	if err != nil {
-		log.Printf("发布动态失败: %v", err)
-		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 发布失败，请稍后重试")
-	}
-	return safeSendMessage(bot, update.Message.Chat.ID, "✅ 动态发布成功！")
-}
-
 // HandleUnknownCommand 处理未知命令
 func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
@@ -440,15 +394,14 @@ func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 使用方法：
 1. 发送图片/视频，会自动弹出标签选择按钮
 2. 发送文字消息，也会弹出标签选择按钮
-3. 直接发送 /say <内容> 发布纯文字动态
-4. 发送 /tags 查看所有可用标签
-5. 发送 /label <标签名> 设置默认标签
-6. 发送 /refresh 刷新标签列表
-7. 发送 /edit 查看最近的动态列表
-8. 发送 /edit <编号> 编辑指定动态
-9. 发送 /delete 查看最近的动态列表
-10. 发送 /delete <编号> 删除指定动态
-11. 发送 /cancel 取消编辑
+3. 发送 /tags 查看所有可用标签
+4. 发送 /label <标签名> 设置默认标签
+5. 发送 /refresh 刷新标签列表
+6. 发送 /edit 查看最近的动态列表
+7. 发送 /edit <编号> 编辑指定动态
+8. 发送 /delete 查看最近的动态列表
+9. 发送 /delete <编号> 删除指定动态
+10. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
@@ -589,8 +542,6 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	if strings.HasPrefix(text, "/") {
 		if strings.HasPrefix(text, "/start") {
 			return HandleStartCommand(bot, update)
-		} else if strings.HasPrefix(text, "/say") {
-			return HandleSayCommand(bot, update)
 		} else if strings.HasPrefix(text, "/tags") {
 			return HandleTagsCommand(bot, update)
 		} else if strings.HasPrefix(text, "/label") {
