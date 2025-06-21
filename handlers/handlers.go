@@ -60,13 +60,16 @@ func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 6. 发送 /refresh 刷新标签列表
 7. 发送 /edit 查看最近的动态列表
 8. 发送 /edit <编号> 编辑指定动态
-9. 发送 /cancel 取消编辑
+9. 发送 /delete 查看最近的动态列表
+10. 发送 /delete <编号> 删除指定动态
+11. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
 • 选择标签后，可以继续发送文字来更新动态内容
 • 媒体文件会在5分钟后自动发布（如果未手动发布）
-• 发布后可以使用 /edit 命令编辑动态内容`
+• 发布后可以使用 /edit 命令编辑动态内容
+• 可以使用 /delete 命令删除不需要的动态`
 	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
@@ -333,6 +336,52 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		return safeSendMessage(bot, callback.From.ID, fmt.Sprintf("📝 标签已设置为：%s\n\n现在可以发送文字来更新动态内容！", label))
 	}
 	
+	// 处理删除确认回调
+	if strings.HasPrefix(data, "delete:") {
+		deleteAction := strings.TrimPrefix(data, "delete:")
+		
+		if deleteAction == "cancel" {
+			// 取消删除
+			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, "❌ 已取消删除")
+			bot.Send(msg)
+			return nil
+		}
+		
+		if strings.HasPrefix(deleteAction, "confirm:") {
+			// 确认删除
+			issueNumberStr := strings.TrimPrefix(deleteAction, "confirm:")
+			issueNumber, err := strconv.Atoi(issueNumberStr)
+			if err != nil {
+				msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, "❌ 无效的动态编号")
+				bot.Send(msg)
+				return nil
+			}
+			
+			// 更新消息显示正在删除
+			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, "⏳ 正在删除动态...")
+			bot.Send(msg)
+			
+			// 删除 GitHub Issue
+			err = github.DeleteGitHubIssue(issueNumber)
+			if err != nil {
+				errorMsg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, fmt.Sprintf("❌ 删除失败：%v", err))
+				bot.Send(errorMsg)
+				return nil
+			}
+			
+			// 从缓存中删除
+			config.PublishedMutex.Lock()
+			delete(config.PublishedMoments, issueNumber)
+			config.PublishedMutex.Unlock()
+			
+			// 更新消息显示删除成功
+			successMsg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, fmt.Sprintf("✅ 动态 #%d 已删除", issueNumber))
+			bot.Send(successMsg)
+			
+			return nil
+		}
+	}
+	
 	return nil
 }
 
@@ -397,13 +446,16 @@ func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 6. 发送 /refresh 刷新标签列表
 7. 发送 /edit 查看最近的动态列表
 8. 发送 /edit <编号> 编辑指定动态
-9. 发送 /cancel 取消编辑
+9. 发送 /delete 查看最近的动态列表
+10. 发送 /delete <编号> 删除指定动态
+11. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
 • 选择标签后，可以继续发送文字来更新动态内容
 • 媒体文件会在5分钟后自动发布（如果未手动发布）
-• 发布后可以使用 /edit 命令编辑动态内容`
+• 发布后可以使用 /edit 命令编辑动态内容
+• 可以使用 /delete 命令删除不需要的动态`
 	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
@@ -458,7 +510,7 @@ func HandlePhotoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	}
 	message += "\n\n💡 请选择标签，然后可以发送文字来更新动态内容！"
 	
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, cleanUTF8String(message))
 	msg.ReplyMarkup = keyboard
 	_, err := bot.Send(msg)
 	return err
@@ -515,7 +567,7 @@ func HandleVideoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	}
 	message += "\n\n💡 请选择标签，然后可以发送文字来更新动态内容！"
 	
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, cleanUTF8String(message))
 	msg.ReplyMarkup = keyboard
 	_, err := bot.Send(msg)
 	return err
@@ -547,6 +599,8 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 			return HandleRefreshCommand(bot, update)
 		} else if strings.HasPrefix(text, "/edit") {
 			return HandleEditCommand(bot, update)
+		} else if strings.HasPrefix(text, "/delete") {
+			return HandleDeleteCommand(bot, update)
 		} else if strings.HasPrefix(text, "/cancel") {
 			return HandleCancelCommand(bot, update)
 		} else {
@@ -584,7 +638,7 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	message += fmt.Sprintf("\n\n当前文字：%s", text)
 	message += "\n\n💡 请选择标签来发布动态！"
 	
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, cleanUTF8String(message))
 	msg.ReplyMarkup = keyboard
 	_, sendErr := bot.Send(msg)
 	return sendErr
@@ -772,7 +826,7 @@ func HandleEditCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	message += "💡 请选择标签，然后发送新的内容来更新动态\n"
 	message += "❌ 发送 /cancel 取消编辑"
 	
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, cleanUTF8String(message))
 	msg.ReplyMarkup = keyboard
 	_, sendErr := bot.Send(msg)
 	return sendErr
@@ -913,4 +967,116 @@ func HandleEditTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	successMessage += fmt.Sprintf("🔗 查看链接：%s", updatedIssue.HTMLURL)
 	
 	return safeSendMessage(bot, update.Message.Chat.ID, successMessage)
+}
+
+// HandleDeleteCommand 处理 /delete 命令
+func HandleDeleteCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
+	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
+		return nil
+	}
+	
+	text := update.Message.Text
+	if text == "" {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
+	}
+	
+	parts := strings.Fields(text)
+	if len(parts) < 2 {
+		// 显示最近的动态列表供选择
+		return showRecentMomentsForDelete(bot, update.Message.Chat.ID)
+	}
+	
+	// 解析 Issue Number
+	issueNumberStr := parts[1]
+	issueNumber, err := strconv.Atoi(issueNumberStr)
+	if err != nil {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的动态编号\n\n💡 发送 /delete 查看最近的动态列表")
+	}
+	
+	// 获取动态内容
+	moment, exists := config.GetPublishedMoment(issueNumber)
+	if !exists {
+		// 尝试从 GitHub 获取
+		issue, err := github.GetGitHubIssue(issueNumber)
+		if err != nil {
+			return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("❌ 无法获取动态 #%d\n\n错误：%v", issueNumber, err))
+		}
+		
+		// 创建动态对象并缓存
+		moment = &types.PublishedMoment{
+			IssueID:     issue.ID,
+			IssueNumber: issue.Number,
+			Content:     issue.Body,
+			Labels:      []string{},
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		}
+		config.AddPublishedMoment(moment)
+	}
+	
+	// 创建确认删除的键盘
+	var buttons [][]tgbotapi.InlineKeyboardButton
+	confirmRow := []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("✅ 确认删除", fmt.Sprintf("delete:confirm:%d", issueNumber)),
+		tgbotapi.NewInlineKeyboardButtonData("❌ 取消", "delete:cancel"),
+	}
+	buttons = append(buttons, confirmRow)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
+	
+	message := fmt.Sprintf("🗑️ 确认删除动态 #%d？\n\n", issueNumber)
+	message += "📝 动态内容：\n"
+	
+	// 截取内容预览
+	preview := moment.Content
+	if len(preview) > 100 {
+		preview = preview[:100] + "..."
+	}
+	message += fmt.Sprintf("```\n%s\n```\n\n", preview)
+	
+	// 显示标签
+	if len(moment.Labels) > 0 {
+		message += "🏷️ 标签："
+		for i, label := range moment.Labels {
+			if i > 0 {
+				message += ", "
+			}
+			message += label
+		}
+		message += "\n\n"
+	}
+	
+	message += "⚠️ 删除后无法恢复，请确认！"
+	
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, cleanUTF8String(message))
+	msg.ReplyMarkup = keyboard
+	_, sendErr := bot.Send(msg)
+	return sendErr
+}
+
+// showRecentMomentsForDelete 显示最近的动态列表（用于删除）
+func showRecentMomentsForDelete(bot *tgbotapi.BotAPI, chatID int64) error {
+	issues, err := github.GetRecentIssues(10)
+	if err != nil {
+		return safeSendMessage(bot, chatID, fmt.Sprintf("❌ 获取动态列表失败：%v", err))
+	}
+	
+	if len(issues) == 0 {
+		return safeSendMessage(bot, chatID, "📝 暂无动态")
+	}
+	
+	message := "🗑️ 选择要删除的动态：\n\n"
+	for _, issue := range issues {
+		// 截取内容预览
+		preview := issue.Body
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+		
+		message += fmt.Sprintf("#%d - %s\n", issue.Number, preview)
+	}
+	
+	message += "\n💡 发送 /delete <编号> 删除指定动态\n"
+	message += "例如：/delete 123"
+	
+	return safeSendMessage(bot, chatID, message)
 } 

@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"moments-go/config"
 	"moments-go/types"
@@ -183,9 +185,34 @@ func UploadToGitHubWithLabels(bot *tgbotapi.BotAPI, content string, mediaFiles [
 
 // SendMessage 发送消息
 func SendMessage(bot *tgbotapi.BotAPI, chatID int64, message string) error {
-	msg := tgbotapi.NewMessage(chatID, message)
+	// 清理消息，确保UTF-8编码
+	cleanedMessage := cleanUTF8String(message)
+	msg := tgbotapi.NewMessage(chatID, cleanedMessage)
 	_, err := bot.Send(msg)
 	return err
+}
+
+// cleanUTF8String 清理字符串，确保是有效的UTF-8编码
+func cleanUTF8String(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	
+	// 如果字符串不是有效的UTF-8，进行清理
+	var result strings.Builder
+	for _, r := range s {
+		if r == utf8.RuneError {
+			// 跳过无效的UTF-8字符
+			continue
+		}
+		result.WriteRune(r)
+	}
+	
+	cleaned := result.String()
+	if cleaned == "" {
+		return "内容已清理"
+	}
+	return cleaned
 }
 
 // GetGitHubIssue 获取 GitHub Issue
@@ -297,4 +324,32 @@ func GetRecentIssues(limit int) ([]types.GitHubIssueResponse, error) {
 	}
 
 	return issues, nil
+}
+
+// DeleteGitHubIssue 删除 GitHub Issue
+func DeleteGitHubIssue(issueNumber int) error {
+	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer([]byte(`{"state":"closed"}`)))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Cfg.GitHubSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitHub API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 } 
