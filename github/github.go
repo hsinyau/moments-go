@@ -15,7 +15,64 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// GitHubLabel GitHub 标签结构
+type GitHubLabel struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+// GetGitHubLabels 从 GitHub 获取所有标签
+func GetGitHubLabels() ([]string, error) {
+	url := "https://api.github.com/repos/hsinyau/moments/labels"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Cfg.GitHubSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	var labels []GitHubLabel
+	if err := json.NewDecoder(resp.Body).Decode(&labels); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	// 提取标签名称
+	var labelNames []string
+	for _, label := range labels {
+		labelNames = append(labelNames, label.Name)
+	}
+
+	// 如果没有标签，返回默认标签
+	if len(labelNames) == 0 {
+		return types.DefaultLabels, nil
+	}
+
+	return labelNames, nil
+}
+
+// CreateGitHubIssue 创建 GitHub Issue
 func CreateGitHubIssue(content string) (*types.GitHubIssueResponse, error) {
+	return CreateGitHubIssueWithLabels(content, []string{"动态"})
+}
+
+// CreateGitHubIssueWithLabels 创建带标签的 GitHub Issue
+func CreateGitHubIssueWithLabels(content string, labels []string) (*types.GitHubIssueResponse, error) {
 	if len(content) > 5000 {
 		return nil, fmt.Errorf("内容长度不能超过5000字符")
 	}
@@ -23,7 +80,7 @@ func CreateGitHubIssue(content string) (*types.GitHubIssueResponse, error) {
 	issueData := map[string]interface{}{
 		"title": timestamp,
 		"body":  content,
-		"labels": []string{"动态"},
+		"labels": labels,
 	}
 	jsonData, err := json.Marshal(issueData)
 	if err != nil {
@@ -54,6 +111,7 @@ func CreateGitHubIssue(content string) (*types.GitHubIssueResponse, error) {
 	return &issue, nil
 }
 
+// UploadFileToGitHub 上传文件到 GitHub
 func UploadFileToGitHub(file *types.MediaFile, timestamp string) (string, error) {
 	base64Content := base64.StdEncoding.EncodeToString(file.Content)
 	uploadData := map[string]interface{}{
@@ -93,7 +151,13 @@ func UploadFileToGitHub(file *types.MediaFile, timestamp string) (string, error)
 	return uploadResult.Content.DownloadURL, nil
 }
 
+// UploadToGitHub 上传媒体文件到 GitHub 并发布动态
 func UploadToGitHub(bot *tgbotapi.BotAPI, content string, mediaFiles []*types.MediaFile) (*types.GitHubIssueResponse, error) {
+	return UploadToGitHubWithLabels(bot, content, mediaFiles, []string{"动态"})
+}
+
+// UploadToGitHubWithLabels 上传媒体文件到 GitHub 并发布带标签的动态
+func UploadToGitHubWithLabels(bot *tgbotapi.BotAPI, content string, mediaFiles []*types.MediaFile, labels []string) (*types.GitHubIssueResponse, error) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	var mediaUrls []string
 	if len(mediaFiles) > 0 {
@@ -114,9 +178,10 @@ func UploadToGitHub(bot *tgbotapi.BotAPI, content string, mediaFiles []*types.Me
 			fullContent += fmt.Sprintf("\n![%s](%s)", url, url)
 		}
 	}
-	return CreateGitHubIssue(fullContent)
+	return CreateGitHubIssueWithLabels(fullContent, labels)
 }
 
+// SendMessage 发送消息
 func SendMessage(bot *tgbotapi.BotAPI, chatID int64, message string) error {
 	msg := tgbotapi.NewMessage(chatID, message)
 	_, err := bot.Send(msg)

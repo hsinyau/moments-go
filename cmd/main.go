@@ -33,13 +33,25 @@ func main() {
 
 	// 处理更新
 	for update := range updates {
+		log.Printf("收到更新: %+v", update)
+
+		var err error
+
+		// 处理回调查询（标签选择）
+		if update.CallbackQuery != nil {
+			err = handlers.HandleCallbackQuery(bot, update)
+			if err != nil {
+				log.Printf("处理回调查询失败: %v", err)
+			}
+			continue
+		}
+
+		// 处理普通消息
 		if update.Message == nil {
 			continue
 		}
 
 		log.Printf("收到消息: [%d] %s", update.Message.Chat.ID, update.Message.Text)
-
-		var err error
 
 		// 根据消息类型处理
 		switch {

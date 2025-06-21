@@ -25,6 +25,7 @@ type PendingMedia struct {
 	FileID  string
 	Type    string
 	Caption string
+	Labels  []string
 }
 
 type Config struct {
@@ -32,4 +33,10 @@ type Config struct {
 	TelegramUserID   int64
 	GitHubSecret     string
 	GitHubFileRepo   string
+}
+
+var DefaultLabels = []string{
+	"动态",
+	"日常",
+	"其他",
 } 
