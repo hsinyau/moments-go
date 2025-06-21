@@ -255,8 +255,8 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, message)
 			bot.Send(msg)
 			
-			// 立即处理文字消息
-			return ProcessPendingMedia(bot, callback.From.ID, "")
+			// 立即处理文字消息，不发送重复的进度消息
+			return ProcessPendingMediaWithProgress(bot, callback.From.ID, "", false)
 		}
 		
 		// 为媒体文件设置定时器，5分钟后自动发布
@@ -516,6 +516,11 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 
 // ProcessPendingMedia 处理待发布的媒体文件
 func ProcessPendingMedia(bot *tgbotapi.BotAPI, chatID int64, content string) error {
+	return ProcessPendingMediaWithProgress(bot, chatID, content, true)
+}
+
+// ProcessPendingMediaWithProgress 处理待发布的媒体文件，可选择是否发送进度消息
+func ProcessPendingMediaWithProgress(bot *tgbotapi.BotAPI, chatID int64, content string, showProgress bool) error {
 	config.MediaMutex.Lock()
 	pending, exists := config.PendingMedia[chatID]
 	if !exists {
@@ -527,8 +532,10 @@ func ProcessPendingMedia(bot *tgbotapi.BotAPI, chatID int64, content string) err
 	
 	// 处理纯文字消息
 	if pending.Type == "text" {
-		if err := github.SendMessage(bot, chatID, "⏳ 正在发布文字动态..."); err != nil {
-			return err
+		if showProgress {
+			if err := github.SendMessage(bot, chatID, "⏳ 正在发布文字动态..."); err != nil {
+				return err
+			}
 		}
 		
 		finalContent := content
@@ -551,8 +558,10 @@ func ProcessPendingMedia(bot *tgbotapi.BotAPI, chatID int64, content string) err
 	}
 	
 	// 处理媒体文件
-	if err := github.SendMessage(bot, chatID, "⏳ 正在处理媒体文件..."); err != nil {
-		return err
+	if showProgress {
+		if err := github.SendMessage(bot, chatID, "⏳ 正在处理媒体文件..."); err != nil {
+			return err
+		}
 	}
 	fileBuffer, err := telegram.DownloadFile(bot, pending.FileID)
 	if err != nil {
