@@ -78,7 +78,16 @@ func HandleTagsCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		return nil
 	}
 
-	labels := config.GetLabels()
+	// 先尝试从 GitHub 获取最新标签
+	labels, err := github.GetGitHubLabels()
+	if err != nil {
+		log.Printf("获取 GitHub 标签失败: %v，使用缓存标签", err)
+		// 获取失败时使用缓存标签
+		labels = config.GetLabels()
+	} else {
+		// 获取成功，更新缓存
+		config.SetLabels(labels)
+	}
 	
 	// 构建内联键盘
 	var buttons [][]tgbotapi.InlineKeyboardButton
@@ -99,7 +108,7 @@ func HandleTagsCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "📋 请选择一个标签作为默认标签：")
 	msg.ReplyMarkup = keyboard
-	_, err := bot.Send(msg)
+	_, err = bot.Send(msg)
 	return err
 }
 
@@ -149,8 +158,16 @@ func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	
 	label := strings.Join(parts[1:], " ")
 	
-	// 获取当前可用标签
-	labels := config.GetLabels()
+	// 先尝试从 GitHub 获取最新标签进行验证
+	labels, err := github.GetGitHubLabels()
+	if err != nil {
+		log.Printf("获取 GitHub 标签失败: %v，使用缓存标签", err)
+		// 获取失败时使用缓存标签
+		labels = config.GetLabels()
+	} else {
+		// 获取成功，更新缓存
+		config.SetLabels(labels)
+	}
 	
 	// 检查标签是否有效
 	valid := false
@@ -185,8 +202,16 @@ func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 func createLabelKeyboard() tgbotapi.InlineKeyboardMarkup {
 	var buttons [][]tgbotapi.InlineKeyboardButton
 	
-	// 获取当前可用标签
-	labels := config.GetLabels()
+	// 先尝试从 GitHub 获取最新标签
+	labels, err := github.GetGitHubLabels()
+	if err != nil {
+		log.Printf("获取 GitHub 标签失败: %v，使用缓存标签", err)
+		// 获取失败时使用缓存标签
+		labels = config.GetLabels()
+	} else {
+		// 获取成功，更新缓存
+		config.SetLabels(labels)
+	}
 	
 	// 每行3个按钮
 	for i := 0; i < len(labels); i += 3 {
