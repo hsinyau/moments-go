@@ -56,11 +56,9 @@ func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 2. 发送文字消息，也会弹出标签选择按钮
 3. 发送 /tags 查看所有可用标签
 4. 发送 /refresh 刷新标签列表
-5. 发送 /edit 查看最近的动态列表
-6. 发送 /edit <编号> 编辑指定动态
-7. 发送 /delete 查看最近的动态列表
-8. 发送 /delete <编号> 删除指定动态
-9. 发送 /cancel 取消编辑
+5. 发送 /edit <编号> 编辑指定动态
+6. 发送 /delete <编号> 删除指定动态
+7. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
@@ -333,11 +331,9 @@ func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 2. 发送文字消息，也会弹出标签选择按钮
 3. 发送 /tags 查看所有可用标签
 4. 发送 /refresh 刷新标签列表
-5. 发送 /edit 查看最近的动态列表
-6. 发送 /edit <编号> 编辑指定动态
-7. 发送 /delete 查看最近的动态列表
-8. 发送 /delete <编号> 删除指定动态
-9. 发送 /cancel 取消编辑
+5. 发送 /edit <编号> 编辑指定动态
+6. 发送 /delete <编号> 删除指定动态
+7. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
