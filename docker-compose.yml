@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  moments-go:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moments-go-bot
+    restart: unless-stopped
+    environment:
+      # Telegram 配置
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID}
+      # GitHub 配置
+      - GITHUB_SECRET=${GITHUB_SECRET}
+      - GITHUB_FILE_REPO=${GITHUB_FILE_REPO:-static}
+    volumes:
+      # 可选：挂载日志目录
+      - ./logs:/app/logs
+    networks:
+      - moments-network
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "pgrep", "moments-go"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  moments-network:
+    driver: bridge 
