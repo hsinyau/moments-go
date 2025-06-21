@@ -28,3 +28,6 @@ Thumbs.db
 # 临时文件
 tmp/
 temp/ 
+
+# 构建文件
+moments-go
