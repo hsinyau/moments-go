@@ -3,8 +3,10 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"moments-go/config"
 	"moments-go/github"
@@ -12,6 +14,35 @@ import (
 	"moments-go/types"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// cleanUTF8String 清理字符串，确保是有效的UTF-8编码
+func cleanUTF8String(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	
+	// 如果字符串不是有效的UTF-8，进行清理
+	var result strings.Builder
+	for _, r := range s {
+		if r == utf8.RuneError {
+			// 跳过无效的UTF-8字符
+			continue
+		}
+		result.WriteRune(r)
+	}
+	
+	cleaned := result.String()
+	if cleaned == "" {
+		return "内容已清理"
+	}
+	return cleaned
+}
+
+// safeSendMessage 安全发送消息，确保UTF-8编码
+func safeSendMessage(bot *tgbotapi.BotAPI, chatID int64, message string) error {
+	cleanedMessage := cleanUTF8String(message)
+	return github.SendMessage(bot, chatID, cleanedMessage)
+}
 
 // HandleStartCommand 处理 /start 命令
 func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
@@ -27,12 +58,16 @@ func HandleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 4. 发送 /tags 查看所有可用标签
 5. 发送 /label <标签名> 设置默认标签
 6. 发送 /refresh 刷新标签列表
+7. 发送 /edit 查看最近的动态列表
+8. 发送 /edit <编号> 编辑指定动态
+9. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
 • 选择标签后，可以继续发送文字来更新动态内容
-• 媒体文件会在5分钟后自动发布（如果未手动发布）`
-	return github.SendMessage(bot, update.Message.Chat.ID, message)
+• 媒体文件会在5分钟后自动发布（如果未手动发布）
+• 发布后可以使用 /edit 命令编辑动态内容`
+	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
 // HandleTagsCommand 处理 /tags 命令
@@ -72,7 +107,7 @@ func HandleRefreshCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		return nil
 	}
 	
-	if err := github.SendMessage(bot, update.Message.Chat.ID, "🔄 正在刷新标签列表..."); err != nil {
+	if err := safeSendMessage(bot, update.Message.Chat.ID, "🔄 正在刷新标签列表..."); err != nil {
 		return err
 	}
 	
@@ -80,7 +115,7 @@ func HandleRefreshCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	labels, err := github.GetGitHubLabels()
 	if err != nil {
 		log.Printf("刷新标签失败: %v", err)
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 刷新标签失败，请稍后重试")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 刷新标签失败，请稍后重试")
 	}
 	
 	// 更新缓存
@@ -91,7 +126,7 @@ func HandleRefreshCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		message += fmt.Sprintf("%d. %s\n", i+1, label)
 	}
 	
-	return github.SendMessage(bot, update.Message.Chat.ID, message)
+	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
 // HandleLabelCommand 处理 /label 命令
@@ -102,12 +137,12 @@ func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	
 	text := update.Message.Text
 	if text == "" {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
 	}
 	
 	parts := strings.Fields(text)
 	if len(parts) < 2 {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/label <标签名>")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/label <标签名>")
 	}
 	
 	label := strings.Join(parts[1:], " ")
@@ -130,7 +165,7 @@ func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 			message += fmt.Sprintf("• %s\n", l)
 		}
 		message += "\n💡 发送 /refresh 刷新标签列表"
-		return github.SendMessage(bot, update.Message.Chat.ID, message)
+		return safeSendMessage(bot, update.Message.Chat.ID, message)
 	}
 	
 	// 存储用户默认标签
@@ -141,7 +176,7 @@ func HandleLabelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	config.UserDefaultLabels[update.Message.Chat.ID] = label
 	config.MediaMutex.Unlock()
 	
-	return github.SendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("✅ 默认标签已设置为：%s", label))
+	return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("✅ 默认标签已设置为：%s", label))
 }
 
 // createLabelKeyboard 创建标签选择键盘
@@ -192,7 +227,7 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		config.MediaMutex.Unlock()
 		msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, fmt.Sprintf("✅ 默认标签已设置为：%s", label))
 		bot.Send(msg)
-		return github.SendMessage(bot, callback.From.ID, fmt.Sprintf("📝 你的默认标签已设置为：%s\n下次发动态会自动带上该标签。", label))
+		return safeSendMessage(bot, callback.From.ID, fmt.Sprintf("📝 你的默认标签已设置为：%s\n下次发动态会自动带上该标签。", label))
 	}
 	
 	if strings.HasPrefix(data, "label:") {
@@ -236,17 +271,37 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		pending, exists := config.PendingMedia[callback.From.ID]
 		config.MediaMutex.Unlock()
 		
-		if !exists {
-			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, "❌ 没有待处理的媒体文件")
+		// 检查是否在编辑模式
+		editState, inEditMode := config.GetEditState(callback.From.ID)
+		
+		if !exists && !inEditMode {
+			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, "❌ 没有待处理的内容")
 			bot.Send(msg)
 			return nil
 		}
 		
 		// 设置标签
-		config.MediaMutex.Lock()
-		pending.Labels = []string{label}
-		config.PendingMedia[callback.From.ID] = pending
-		config.MediaMutex.Unlock()
+		if inEditMode {
+			// 编辑模式：更新编辑状态的标签
+			config.EditMutex.Lock()
+			editState.SelectedLabels = []string{label}
+			config.EditStates[callback.From.ID] = editState
+			config.EditMutex.Unlock()
+			
+			// 更新消息
+			message := fmt.Sprintf("✅ 已选择标签：%s\n\n💡 现在可以发送新的内容来更新动态。", label)
+			msg := tgbotapi.NewEditMessageText(callback.From.ID, callback.Message.MessageID, message)
+			bot.Send(msg)
+			
+			// 发送确认消息
+			return safeSendMessage(bot, callback.From.ID, fmt.Sprintf("📝 标签已设置为：%s\n\n现在可以发送新的内容来更新动态！", label))
+		} else {
+			// 发布模式：设置待发布媒体的标签
+			config.MediaMutex.Lock()
+			pending.Labels = []string{label}
+			config.PendingMedia[callback.From.ID] = pending
+			config.MediaMutex.Unlock()
+		}
 		
 		// 如果是文字消息，立即发布
 		if pending.Type == "text" {
@@ -275,7 +330,7 @@ func HandleCallbackQuery(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		bot.Send(msg)
 		
 		// 发送确认消息
-		return github.SendMessage(bot, callback.From.ID, fmt.Sprintf("📝 标签已设置为：%s\n\n现在可以发送文字来更新动态内容！", label))
+		return safeSendMessage(bot, callback.From.ID, fmt.Sprintf("📝 标签已设置为：%s\n\n现在可以发送文字来更新动态内容！", label))
 	}
 	
 	return nil
@@ -288,17 +343,21 @@ func HandleSayCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	}
 	text := update.Message.Text
 	if text == "" {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
 	}
 	parts := strings.Fields(text)
 	if len(parts) < 2 {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/say <内容>")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 格式错误\n正确格式：/say <内容>")
 	}
 	content := strings.Join(parts[1:], " ")
 	if content == "" {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 内容不能为空")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 内容不能为空")
 	}
-	if err := github.SendMessage(bot, update.Message.Chat.ID, "⏳ 正在发布动态..."); err != nil {
+	
+	// 清理内容，确保UTF-8编码
+	content = cleanUTF8String(content)
+	
+	if err := safeSendMessage(bot, update.Message.Chat.ID, "⏳ 正在发布动态..."); err != nil {
 		return err
 	}
 	
@@ -317,9 +376,9 @@ func HandleSayCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	_, err := github.CreateGitHubIssueWithLabels(content, labels)
 	if err != nil {
 		log.Printf("发布动态失败: %v", err)
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 发布失败，请稍后重试")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 发布失败，请稍后重试")
 	}
-	return github.SendMessage(bot, update.Message.Chat.ID, "✅ 动态发布成功！")
+	return safeSendMessage(bot, update.Message.Chat.ID, "✅ 动态发布成功！")
 }
 
 // HandleUnknownCommand 处理未知命令
@@ -336,12 +395,16 @@ func HandleUnknownCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 4. 发送 /tags 查看所有可用标签
 5. 发送 /label <标签名> 设置默认标签
 6. 发送 /refresh 刷新标签列表
+7. 发送 /edit 查看最近的动态列表
+8. 发送 /edit <编号> 编辑指定动态
+9. 发送 /cancel 取消编辑
 
 💡 提示：
 • 发送媒体文件或文字后，选择标签即可发布动态
 • 选择标签后，可以继续发送文字来更新动态内容
-• 媒体文件会在5分钟后自动发布（如果未手动发布）`
-	return github.SendMessage(bot, update.Message.Chat.ID, message)
+• 媒体文件会在5分钟后自动发布（如果未手动发布）
+• 发布后可以使用 /edit 命令编辑动态内容`
+	return safeSendMessage(bot, update.Message.Chat.ID, message)
 }
 
 // HandlePhotoMessage 处理图片消息
@@ -411,7 +474,7 @@ func HandleVideoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 		return nil
 	}
 	if video.FileSize > config.MaxFileSize {
-		return github.SendMessage(bot, update.Message.Chat.ID, "❌ 视频文件过大，请上传小于 50MB 的视频")
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 视频文件过大，请上传小于 50MB 的视频")
 	}
 	
 	// 获取用户默认标签
@@ -467,6 +530,10 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	if text == "" {
 		return nil
 	}
+	
+	// 清理用户输入的文字，确保UTF-8编码
+	text = cleanUTF8String(text)
+	
 	if strings.HasPrefix(text, "/") {
 		if strings.HasPrefix(text, "/start") {
 			return HandleStartCommand(bot, update)
@@ -478,9 +545,18 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 			return HandleLabelCommand(bot, update)
 		} else if strings.HasPrefix(text, "/refresh") {
 			return HandleRefreshCommand(bot, update)
+		} else if strings.HasPrefix(text, "/edit") {
+			return HandleEditCommand(bot, update)
+		} else if strings.HasPrefix(text, "/cancel") {
+			return HandleCancelCommand(bot, update)
 		} else {
 			return HandleUnknownCommand(bot, update)
 		}
+	}
+	
+	// 检查是否在编辑模式
+	if config.IsInEditMode(update.Message.Chat.ID) {
+		return HandleEditTextMessage(bot, update)
 	}
 	
 	// 检查是否有待处理的媒体文件
@@ -510,8 +586,8 @@ func HandleTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
 	
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
 	msg.ReplyMarkup = keyboard
-	_, err := bot.Send(msg)
-	return err
+	_, sendErr := bot.Send(msg)
+	return sendErr
 }
 
 // ProcessPendingMedia 处理待发布的媒体文件
@@ -533,7 +609,7 @@ func ProcessPendingMediaWithProgress(bot *tgbotapi.BotAPI, chatID int64, content
 	// 处理纯文字消息
 	if pending.Type == "text" {
 		if showProgress {
-			if err := github.SendMessage(bot, chatID, "⏳ 正在发布文字动态..."); err != nil {
+			if err := safeSendMessage(bot, chatID, "⏳ 正在发布文字动态..."); err != nil {
 				return err
 			}
 		}
@@ -549,17 +625,31 @@ func ProcessPendingMediaWithProgress(bot *tgbotapi.BotAPI, chatID int64, content
 			labels = []string{"动态"}
 		}
 		
-		_, err := github.CreateGitHubIssueWithLabels(finalContent, labels)
+		issue, err := github.CreateGitHubIssueWithLabels(finalContent, labels)
 		if err != nil {
 			log.Printf("发布文字动态失败: %v", err)
-			return github.SendMessage(bot, chatID, "❌ 发布失败，请稍后重试")
+			return safeSendMessage(bot, chatID, "❌ 发布失败，请稍后重试")
 		}
-		return github.SendMessage(bot, chatID, "✅ 文字动态发布成功！")
+		
+		// 缓存已发布的动态信息
+		moment := &types.PublishedMoment{
+			IssueID:     issue.ID,
+			IssueNumber: issue.Number,
+			Content:     finalContent,
+			Labels:      labels,
+			MediaURLs:   []string{},
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		}
+		config.AddPublishedMoment(moment)
+		
+		successMessage := fmt.Sprintf("✅ 文字动态发布成功！\n\n🔗 查看链接：%s", issue.HTMLURL)
+		return safeSendMessage(bot, chatID, successMessage)
 	}
 	
 	// 处理媒体文件
 	if showProgress {
-		if err := github.SendMessage(bot, chatID, "⏳ 正在处理媒体文件..."); err != nil {
+		if err := safeSendMessage(bot, chatID, "⏳ 正在处理媒体文件..."); err != nil {
 			return err
 		}
 	}
@@ -605,5 +695,222 @@ func ProcessPendingMediaWithProgress(bot *tgbotapi.BotAPI, chatID int64, content
 	if err != nil {
 		return err
 	}
-	return github.SendMessage(bot, chatID, "✅ 动态发布成功！")
+	
+	// 缓存已发布的动态信息（这里需要从响应中获取，暂时跳过）
+	// TODO: 修改 UploadToGitHubWithLabels 返回 Issue 信息
+	
+	return safeSendMessage(bot, chatID, "✅ 动态发布成功！")
+}
+
+// HandleEditCommand 处理 /edit 命令
+func HandleEditCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
+	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
+		return nil
+	}
+	
+	text := update.Message.Text
+	if text == "" {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的消息格式")
+	}
+	
+	parts := strings.Fields(text)
+	if len(parts) < 2 {
+		// 显示最近的动态列表供选择
+		return showRecentMoments(bot, update.Message.Chat.ID)
+	}
+	
+	// 解析 Issue Number
+	issueNumberStr := parts[1]
+	issueNumber, err := strconv.Atoi(issueNumberStr)
+	if err != nil {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 无效的动态编号\n\n💡 发送 /edit 查看最近的动态列表")
+	}
+	
+	// 获取动态内容
+	moment, exists := config.GetPublishedMoment(issueNumber)
+	if !exists {
+		// 尝试从 GitHub 获取
+		issue, err := github.GetGitHubIssue(issueNumber)
+		if err != nil {
+			return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("❌ 无法获取动态 #%d\n\n错误：%v", issueNumber, err))
+		}
+		
+		// 创建动态对象并缓存
+		moment = &types.PublishedMoment{
+			IssueID:     issue.ID,
+			IssueNumber: issue.Number,
+			Content:     issue.Body,
+			Labels:      []string{}, // 这里可以解析标签
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		}
+		config.AddPublishedMoment(moment)
+	}
+	
+	// 设置编辑状态
+	config.SetEditState(update.Message.Chat.ID, issueNumber, moment.Content, moment.Labels)
+	
+	// 创建标签选择键盘
+	keyboard := createLabelKeyboard()
+	
+	message := fmt.Sprintf("✏️ 正在编辑动态 #%d\n\n", issueNumber)
+	message += "📝 当前内容：\n"
+	message += fmt.Sprintf("```\n%s\n```\n\n", moment.Content)
+	
+	// 显示当前标签
+	if len(moment.Labels) > 0 {
+		message += "🏷️ 当前标签："
+		for i, label := range moment.Labels {
+			if i > 0 {
+				message += ", "
+			}
+			message += label
+		}
+		message += "\n\n"
+	}
+	
+	message += "💡 请选择标签，然后发送新的内容来更新动态\n"
+	message += "❌ 发送 /cancel 取消编辑"
+	
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, message)
+	msg.ReplyMarkup = keyboard
+	_, sendErr := bot.Send(msg)
+	return sendErr
+}
+
+// HandleCancelCommand 处理 /cancel 命令
+func HandleCancelCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
+	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
+		return nil
+	}
+	
+	if !config.IsInEditMode(update.Message.Chat.ID) {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 当前不在编辑模式")
+	}
+	
+	config.ClearEditState(update.Message.Chat.ID)
+	return safeSendMessage(bot, update.Message.Chat.ID, "✅ 已取消编辑")
+}
+
+// showRecentMoments 显示最近的动态列表
+func showRecentMoments(bot *tgbotapi.BotAPI, chatID int64) error {
+	issues, err := github.GetRecentIssues(10)
+	if err != nil {
+		return safeSendMessage(bot, chatID, fmt.Sprintf("❌ 获取动态列表失败：%v", err))
+	}
+	
+	if len(issues) == 0 {
+		return safeSendMessage(bot, chatID, "📝 暂无动态")
+	}
+	
+	message := "📋 最近的动态列表：\n\n"
+	for i, issue := range issues {
+		// 截取内容预览
+		preview := issue.Body
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+		
+		message += fmt.Sprintf("%d. #%d - %s\n", i+1, issue.Number, preview)
+	}
+	
+	message += "\n💡 发送 /edit <编号> 编辑指定动态\n"
+	message += "例如：/edit 123"
+	
+	return safeSendMessage(bot, chatID, message)
+}
+
+// HandleEditTextMessage 处理编辑模式下的文字消息
+func HandleEditTextMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) error {
+	if !config.IsAuthorizedUser(update.Message.Chat.ID) {
+		return nil
+	}
+	
+	// 检查是否在编辑模式
+	editState, exists := config.GetEditState(update.Message.Chat.ID)
+	if !exists {
+		return nil // 不是编辑模式，交给普通文字处理
+	}
+	
+	newContent := update.Message.Text
+	if newContent == "" {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 内容不能为空")
+	}
+	
+	// 清理用户输入的文字，确保UTF-8编码
+	newContent = cleanUTF8String(newContent)
+	
+	// 检查内容长度
+	if len(newContent) > 5000 {
+		return safeSendMessage(bot, update.Message.Chat.ID, "❌ 内容长度不能超过5000字符")
+	}
+	
+	// 获取原始动态信息
+	moment, exists := config.GetPublishedMoment(editState.IssueNumber)
+	if !exists {
+		// 尝试从 GitHub 获取
+		issue, err := github.GetGitHubIssue(editState.IssueNumber)
+		if err != nil {
+			config.ClearEditState(update.Message.Chat.ID)
+			return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("❌ 无法获取动态 #%d：%v", editState.IssueNumber, err))
+		}
+		
+		moment = &types.PublishedMoment{
+			IssueID:     issue.ID,
+			IssueNumber: issue.Number,
+			Content:     issue.Body,
+			Labels:      []string{}, // 这里需要从GitHub API获取标签
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
+		}
+	}
+	
+	// 如果编辑状态中没有标签，使用原始标签
+	if len(editState.SelectedLabels) == 0 {
+		editState.SelectedLabels = moment.Labels
+		if len(editState.SelectedLabels) == 0 {
+			editState.SelectedLabels = []string{"动态"} // 默认标签
+		}
+	}
+	
+	// 发送更新进度消息
+	if err := safeSendMessage(bot, update.Message.Chat.ID, "⏳ 正在更新动态..."); err != nil {
+		return err
+	}
+	
+	// 更新 GitHub Issue
+	updatedIssue, err := github.UpdateGitHubIssue(editState.IssueNumber, newContent, editState.SelectedLabels)
+	if err != nil {
+		config.ClearEditState(update.Message.Chat.ID)
+		return safeSendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("❌ 更新动态失败：%v", err))
+	}
+	
+	// 更新缓存
+	moment.Content = newContent
+	moment.Labels = editState.SelectedLabels
+	moment.UpdatedAt = time.Now().Unix()
+	config.AddPublishedMoment(moment)
+	
+	// 清除编辑状态
+	config.ClearEditState(update.Message.Chat.ID)
+	
+	successMessage := fmt.Sprintf("✅ 动态 #%d 更新成功！\n\n", editState.IssueNumber)
+	successMessage += "📝 新内容：\n"
+	successMessage += fmt.Sprintf("```\n%s\n```\n\n", newContent)
+	
+	// 显示标签
+	if len(editState.SelectedLabels) > 0 {
+		successMessage += "🏷️ 标签："
+		for i, label := range editState.SelectedLabels {
+			if i > 0 {
+				successMessage += ", "
+			}
+			successMessage += label
+		}
+		successMessage += "\n\n"
+	}
+	
+	successMessage += fmt.Sprintf("🔗 查看链接：%s", updatedIssue.HTMLURL)
+	
+	return safeSendMessage(bot, update.Message.Chat.ID, successMessage)
 } 

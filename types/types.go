@@ -28,6 +28,17 @@ type PendingMedia struct {
 	Labels  []string
 }
 
+// PublishedMoment 已发布的动态
+type PublishedMoment struct {
+	IssueID   int      `json:"issue_id"`
+	IssueNumber int    `json:"issue_number"`
+	Content   string   `json:"content"`
+	Labels    []string `json:"labels"`
+	MediaURLs []string `json:"media_urls"`
+	CreatedAt int64    `json:"created_at"`
+	UpdatedAt int64    `json:"updated_at"`
+}
+
 type Config struct {
 	TelegramBotToken string
 	TelegramUserID   int64

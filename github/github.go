@@ -186,4 +186,115 @@ func SendMessage(bot *tgbotapi.BotAPI, chatID int64, message string) error {
 	msg := tgbotapi.NewMessage(chatID, message)
 	_, err := bot.Send(msg)
 	return err
+}
+
+// GetGitHubIssue 获取 GitHub Issue
+func GetGitHubIssue(issueNumber int) (*types.GitHubIssueResponse, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Cfg.GitHubSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	var issue types.GitHubIssueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	return &issue, nil
+}
+
+// UpdateGitHubIssue 更新 GitHub Issue
+func UpdateGitHubIssue(issueNumber int, content string, labels []string) (*types.GitHubIssueResponse, error) {
+	if len(content) > 5000 {
+		return nil, fmt.Errorf("内容长度不能超过5000字符")
+	}
+
+	updateData := map[string]interface{}{
+		"body":   content,
+		"labels": labels,
+	}
+
+	jsonData, err := json.Marshal(updateData)
+	if err != nil {
+		return nil, fmt.Errorf("序列化数据失败: %v", err)
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Cfg.GitHubSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	var issue types.GitHubIssueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	return &issue, nil
+}
+
+// GetRecentIssues 获取最近的动态列表
+func GetRecentIssues(limit int) ([]types.GitHubIssueResponse, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues?state=open&per_page=%d&sort=created&direction=desc", limit)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Cfg.GitHubSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+	}
+
+	var issues []types.GitHubIssueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	return issues, nil
 } 

@@ -16,6 +16,7 @@ const (
 	WaitTime    = 5 * 60 // 5分钟等待时间（秒）
 	MaxFileSize = 50 * 1024 * 1024 // 50MB
 	LabelCacheTime = 30 * 60 // 标签缓存时间（30分钟）
+	PublishedMomentCacheTime = 24 * 60 * 60 // 已发布动态缓存时间（24小时）
 )
 
 var (
@@ -28,7 +29,24 @@ var (
 	LabelsCache     []string
 	LabelsCacheTime time.Time
 	LabelsMutex     sync.RWMutex
+	
+	// 已发布动态缓存
+	PublishedMoments = make(map[int]*types.PublishedMoment) // IssueNumber -> PublishedMoment
+	PublishedMutex   sync.RWMutex
+	
+	// 编辑状态管理
+	EditStates = make(map[int64]*EditState) // ChatID -> EditState
+	EditMutex  sync.RWMutex
 )
+
+// EditState 编辑状态
+type EditState struct {
+	IssueNumber int      `json:"issue_number"`
+	OriginalContent string `json:"original_content"`
+	OriginalLabels []string `json:"original_labels"`
+	SelectedLabels []string `json:"selected_labels"`
+	StartTime   int64    `json:"start_time"`
+}
 
 func LoadConfig() error {
 	if err := godotenv.Load(); err != nil {
@@ -87,4 +105,55 @@ func SetLabels(labels []string) {
 	defer LabelsMutex.Unlock()
 	LabelsCache = labels
 	LabelsCacheTime = time.Now()
+}
+
+// AddPublishedMoment 添加已发布的动态到缓存
+func AddPublishedMoment(moment *types.PublishedMoment) {
+	PublishedMutex.Lock()
+	defer PublishedMutex.Unlock()
+	PublishedMoments[moment.IssueNumber] = moment
+}
+
+// GetPublishedMoment 获取已发布的动态
+func GetPublishedMoment(issueNumber int) (*types.PublishedMoment, bool) {
+	PublishedMutex.RLock()
+	defer PublishedMutex.RUnlock()
+	moment, exists := PublishedMoments[issueNumber]
+	return moment, exists
+}
+
+// SetEditState 设置编辑状态
+func SetEditState(chatID int64, issueNumber int, originalContent string, originalLabels []string) {
+	EditMutex.Lock()
+	defer EditMutex.Unlock()
+	EditStates[chatID] = &EditState{
+		IssueNumber: issueNumber,
+		OriginalContent: originalContent,
+		OriginalLabels: originalLabels,
+		SelectedLabels: originalLabels, // 默认使用原标签
+		StartTime: time.Now().Unix(),
+	}
+}
+
+// GetEditState 获取编辑状态
+func GetEditState(chatID int64) (*EditState, bool) {
+	EditMutex.RLock()
+	defer EditMutex.RUnlock()
+	state, exists := EditStates[chatID]
+	return state, exists
+}
+
+// ClearEditState 清除编辑状态
+func ClearEditState(chatID int64) {
+	EditMutex.Lock()
+	defer EditMutex.Unlock()
+	delete(EditStates, chatID)
+}
+
+// IsInEditMode 检查是否处于编辑模式
+func IsInEditMode(chatID int64) bool {
+	EditMutex.RLock()
+	defer EditMutex.RUnlock()
+	_, exists := EditStates[chatID]
+	return exists
 } 
