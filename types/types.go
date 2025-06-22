@@ -44,6 +44,9 @@ type Config struct {
 	TelegramUserID   int64
 	GitHubSecret     string
 	GitHubFileRepo   string
+	GitHubUsername   string
+	GitHubRepo       string
+	GitHubUserAgent  string
 }
 
 var DefaultLabels = []string{

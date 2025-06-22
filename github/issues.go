@@ -5,6 +5,7 @@ import (
 	"moments-go/types"
 	"strconv"
 	"time"
+	"moments-go/config"
 )
 
 // CreateGitHubIssue 创建 GitHub Issue
@@ -27,7 +28,7 @@ func CreateGitHubIssueWithLabels(content string, labels []string) (*types.GitHub
 		"labels": labels,
 	}
 
-	url := "https://api.github.com/repos/hsinyau/moments/issues"
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo)
 	resp, err := client.makeRequest("POST", url, issueData)
 	if err != nil {
 		return nil, err
@@ -44,7 +45,7 @@ func CreateGitHubIssueWithLabels(content string, labels []string) (*types.GitHub
 // GetGitHubIssue 获取 GitHub Issue
 func GetGitHubIssue(issueNumber int) (*types.GitHubIssueResponse, error) {
 	client := NewGitHubClient()
-	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo, issueNumber)
 	
 	resp, err := client.makeRequest("GET", url, nil)
 	if err != nil {
@@ -71,7 +72,7 @@ func UpdateGitHubIssue(issueNumber int, content string, labels []string) (*types
 		"labels": labels,
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo, issueNumber)
 	resp, err := client.makeRequest("PATCH", url, updateData)
 	if err != nil {
 		return nil, err
@@ -88,7 +89,7 @@ func UpdateGitHubIssue(issueNumber int, content string, labels []string) (*types
 // GetRecentIssues 获取最近的动态列表
 func GetRecentIssues(limit int) ([]types.GitHubIssueResponse, error) {
 	client := NewGitHubClient()
-	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues?state=open&per_page=%d&sort=created&direction=desc", limit)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues?state=open&per_page=%d&sort=created&direction=desc", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo, limit)
 	
 	resp, err := client.makeRequest("GET", url, nil)
 	if err != nil {
@@ -106,7 +107,7 @@ func GetRecentIssues(limit int) ([]types.GitHubIssueResponse, error) {
 // DeleteGitHubIssue 删除 GitHub Issue
 func DeleteGitHubIssue(issueNumber int) error {
 	client := NewGitHubClient()
-	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/moments/issues/%d", issueNumber)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo, issueNumber)
 	
 	resp, err := client.makeRequest("PATCH", url, map[string]string{"state": "closed"})
 	if err != nil {

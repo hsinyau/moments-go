@@ -20,8 +20,8 @@ func UploadFileToGitHub(file *types.MediaFile, timestamp string) (string, error)
 		"content": base64Content,
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/hsinyau/%s/contents/moments/%s_%s", 
-		config.Cfg.GitHubFileRepo, timestamp, file.Name)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/moments/%s_%s", 
+		config.Cfg.GitHubUsername, config.Cfg.GitHubFileRepo, timestamp, file.Name)
 	
 	resp, err := client.makeRequest("PUT", url, uploadData)
 	if err != nil {

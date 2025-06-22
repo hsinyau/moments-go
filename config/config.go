@@ -78,6 +78,22 @@ func LoadConfig() error {
 		Cfg.GitHubFileRepo = "moments-files" // 默认值
 	}
 
+	// 新增 GitHub 配置
+	Cfg.GitHubUsername = os.Getenv("GITHUB_USERNAME")
+	if Cfg.GitHubUsername == "" {
+		return fmt.Errorf("GITHUB_USERNAME 未设置")
+	}
+
+	Cfg.GitHubRepo = os.Getenv("GITHUB_REPO")
+	if Cfg.GitHubRepo == "" {
+		Cfg.GitHubRepo = "moments" // 默认值
+	}
+
+	Cfg.GitHubUserAgent = os.Getenv("GITHUB_USER_AGENT")
+	if Cfg.GitHubUserAgent == "" {
+		Cfg.GitHubUserAgent = "moments-bot/1.0" // 默认值
+	}
+
 	return nil
 }
 

@@ -41,7 +41,7 @@ func (c *GitHubClient) makeRequest(method, url string, body interface{}) (*http.
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "hsinyau-bot/1.0")
+	req.Header.Set("User-Agent", config.Cfg.GitHubUserAgent)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

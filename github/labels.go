@@ -1,13 +1,15 @@
 package github
 
 import (
+	"fmt"
+	"moments-go/config"
 	"moments-go/types"
 )
 
 // GetGitHubLabels 从 GitHub 获取所有标签
 func GetGitHubLabels() ([]string, error) {
 	client := NewGitHubClient()
-	url := "https://api.github.com/repos/hsinyau/moments/labels"
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/labels", config.Cfg.GitHubUsername, config.Cfg.GitHubRepo)
 	
 	resp, err := client.makeRequest("GET", url, nil)
 	if err != nil {

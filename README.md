@@ -32,11 +32,25 @@ cp env.example .env
 编辑 `.env` 文件：
 
 ```env
+# Telegram 机器人配置
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-GITHUB_TOKEN=your_github_token
-GITHUB_REPO=your_username/your_repo
+TELEGRAM_USER_ID=your_telegram_user_id
+
+# GitHub 配置
+GITHUB_SECRET=your_github_personal_access_token
+GITHUB_USERNAME=your_github_username
+GITHUB_REPO=your_repository_name
+GITHUB_FILE_REPO=your_file_repository_name
+GITHUB_USER_AGENT=your_bot_name/version
 AUTHORIZED_USERS=123456789,987654321
-WAIT_TIME=300
+```
+
+### 配置验证
+
+运行配置检查脚本验证环境变量是否正确设置：
+
+```bash
+./scripts/test_config.sh
 ```
 
 ### 3. 运行
